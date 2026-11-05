@@ -1,0 +1,184 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function hasValidProfile(uid) {
+      return request.resource.data.keys().hasAll(['uid', 'fullName', 'email', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'fullName', 'email', 'createdAt'])
+        && request.resource.data.uid == uid
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.email is string
+        && request.resource.data.email == request.auth.token.email;
+    }
+
+    match /farmers/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+        && hasValidProfile(uid)
+        && request.resource.data.createdAt == request.time;
+      allow update: if isOwner(uid)
+        && hasValidProfile(uid)
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(uid);
+    }
+
+    // ---- Farms: one farm per farmer at farms/{uid} ----
+    // Limits mirror FARM_LIMITS in client/src/utils/validation.ts.
+    // Farmers may add their own crop and livestock names; the stock map is owner-scoped and validated client-side.
+
+    function hasValidFarm(uid) {
+      let farm = request.resource.data;
+      let fields = ['ownerId', 'name', 'locationName', 'location', 'sizeHectares', 'crops', 'livestock', 'photoDataUrl', 'createdAt', 'updatedAt'];
+      return farm.keys().hasAll(fields)
+        && farm.keys().hasOnly(fields)
+        && farm.ownerId == uid
+        && farm.name is string && farm.name.size() > 0 && farm.name.size() <= 80
+        && farm.locationName is string && farm.locationName.size() > 0 && farm.locationName.size() <= 100
+        && farm.location is map
+        && farm.location.keys().hasAll(['latitude', 'longitude'])
+        && farm.location.keys().hasOnly(['latitude', 'longitude'])
+        && farm.location.latitude is number && farm.location.latitude >= -90 && farm.location.latitude <= 90
+        && farm.location.longitude is number && farm.location.longitude >= -180 && farm.location.longitude <= 180
+        && farm.sizeHectares is number && farm.sizeHectares > 0 && farm.sizeHectares <= 10000
+        && farm.crops is list && farm.crops.size() <= 50
+        && farm.livestock is map && farm.livestock.keys().size() <= 50
+        && (farm.photoDataUrl == null || (
+          farm.photoDataUrl is string
+          && farm.photoDataUrl.size() <= 100000
+          && farm.photoDataUrl.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$')
+        ))
+        && farm.updatedAt == request.time;
+    }
+
+    match /farms/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+        && hasValidFarm(uid)
+        && request.resource.data.createdAt == request.time;
+      allow update: if isOwner(uid)
+        && hasValidFarm(uid)
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(uid);
+
+      match /memory/{entryId} {
+        function hasValidMemoryEntry() {
+          let memory = request.resource.data;
+          return memory.keys().hasAll(['type', 'title', 'note', 'occurredAt', 'createdAt'])
+            && memory.keys().hasOnly(['type', 'title', 'note', 'occurredAt', 'createdAt', 'lessonId'])
+            && memory.type in ['weather', 'planting', 'success', 'lesson']
+            && memory.title is string && memory.title.size() > 0 && memory.title.size() <= 160
+            && memory.note is string && memory.note.size() <= 500
+            && memory.occurredAt is timestamp
+            && memory.occurredAt <= request.time
+            && memory.createdAt == request.time
+            && ((memory.type == 'lesson'
+              && memory.keys().hasAll(['lessonId'])
+              && memory.lessonId is string
+              && memory.lessonId.size() > 0
+              && memory.lessonId.size() <= 200)
+              || (memory.type != 'lesson' && !memory.keys().hasAny(['lessonId'])));
+        }
+
+        allow get, list: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && exists(/databases/$(database)/documents/farms/$(uid))
+          && hasValidMemoryEntry();
+        allow update: if false;
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    // Curators manage lessons in the Firebase console; farmers may only read reviewed, published lessons.
+    match /lessons/{lessonId} {
+      allow get, list: if request.auth != null
+        && resource.data.reviewed == true
+        && resource.data.published == true;
+      allow create, update, delete: if false;
+    }
+
+    match /communityObservations/{observationId} {
+      function hasValidObservation() {
+        let observation = request.resource.data;
+        let farmLocation = get(/databases/$(database)/documents/farms/$(request.auth.uid)).data.location;
+        let latitudeDistance = (observation.location.latitude - farmLocation.latitude) * 112000;
+        let longitudeDistance = (observation.location.longitude - farmLocation.longitude) * 112000;
+        // The same conservative scale for both axes keeps direct writes inside the local radius.
+        return observation.keys().hasAll([
+            'type', 'details', 'location', 'authorId', 'status', 'reportCount', 'createdAt'
+          ])
+          && observation.keys().hasOnly([
+            'type', 'details', 'location', 'authorId', 'status', 'reportCount', 'createdAt'
+          ])
+          && observation.type in ['flooding', 'frost', 'other']
+          && observation.details is string
+          && observation.details.size() <= 240
+          && (observation.type != 'other' || observation.details.size() > 0)
+          && observation.location is map
+          && observation.location.keys().hasAll(['latitude', 'longitude'])
+          && observation.location.keys().hasOnly(['latitude', 'longitude'])
+          && observation.location.latitude is number
+          && observation.location.latitude >= -90
+          && observation.location.latitude <= 90
+          && observation.location.longitude is number
+          && observation.location.longitude >= -180
+          && observation.location.longitude <= 180
+          && observation.authorId == request.auth.uid
+          && observation.status == 'visible'
+          && observation.reportCount is int
+          && observation.reportCount == 0
+          && observation.createdAt == request.time
+          && latitudeDistance * latitudeDistance + longitudeDistance * longitudeDistance <= 25000 * 25000;
+      }
+
+      function hasValidReportCountUpdate() {
+        let reportPath = /databases/$(database)/documents/communityReports/$(request.auth.uid)/reports/$(observationId);
+        return resource.data.status == 'visible'
+          && resource.data.authorId != request.auth.uid
+          && resource.data.reportCount is int
+          && resource.data.reportCount < 2
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reportCount'])
+          && request.resource.data.reportCount is int
+          && request.resource.data.reportCount == resource.data.reportCount + 1
+          && request.resource.data.status == (request.resource.data.reportCount >= 2 ? 'hidden' : 'visible')
+          && existsAfter(reportPath)
+          && getAfter(reportPath).data.observationId == observationId
+          && getAfter(reportPath).data.createdAt == request.time;
+      }
+
+      allow get: if request.auth != null
+        && (resource.data.status == 'visible' || resource.data.authorId == request.auth.uid);
+      allow list: if request.auth != null && resource.data.status == 'visible';
+      allow create: if request.auth != null
+        && exists(/databases/$(database)/documents/farms/$(request.auth.uid))
+        && hasValidObservation();
+      allow update: if request.auth != null && hasValidReportCountUpdate();
+      allow delete: if request.auth != null && resource.data.authorId == request.auth.uid;
+    }
+
+    match /communityReports/{reporterId}/reports/{observationId} {
+      function noteIsReportedInThisWrite() {
+        let observationPath = /databases/$(database)/documents/communityObservations/$(observationId);
+        let observation = get(observationPath).data;
+        let observationAfter = getAfter(observationPath).data;
+        return observation.status == 'visible'
+          && observation.authorId != request.auth.uid
+          && observationAfter.reportCount == observation.reportCount + 1
+          && observationAfter.status == (observationAfter.reportCount >= 2 ? 'hidden' : 'visible');
+      }
+
+      allow get, list: if isOwner(reporterId);
+      allow create: if isOwner(reporterId)
+        && request.resource.data.keys().hasAll(['observationId', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['observationId', 'createdAt'])
+        && request.resource.data.observationId == observationId
+        && request.resource.data.createdAt == request.time
+        && noteIsReportedInThisWrite();
+      allow update, delete: if false;
+    }
+  }
+}

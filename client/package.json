@@ -1,0 +1,37 @@
+﻿{
+  "name": "agroadvisor-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:emulator": "vite --mode emulator",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "test:unit": "rolldown tests/logic.test.ts --format esm --platform node -d .test-build && node --test .test-build/logic.test.js",
+    "test:firestore-rules": "firebase --config ../firebase.json emulators:exec --only firestore --project demo-agroadvisor \"node --test tests/firestore.rules.test.mjs\"",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "firebase": "^12.19.0",
+    "leaflet": "^1.9.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-leaflet": "^5.0.0",
+    "react-router": "^8.4.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "firebase-tools": "13.35.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  }
+}
+

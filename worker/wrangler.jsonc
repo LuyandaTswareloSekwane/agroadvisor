@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agroadvisor-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": {
+    "enabled": true
+  },
+  // Non-secret configuration. Override locally in .dev.vars.
+  // Secrets (added in later modules) are set with `wrangler secret put <NAME>`.
+  "vars": {
+    "ALLOWED_ORIGIN": "http://localhost:5173"
+  }
+}

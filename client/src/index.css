@@ -1,0 +1,120 @@
+@import 'tailwindcss';
+
+/*
+ * AgroAdvisor theme tokens (Tailwind v4 configures the theme in CSS).
+ * Use these tokens (e.g. bg-leaf-700, text-soil-900, bg-wheat-50) instead of raw hex values.
+ */
+@theme {
+  --font-sans: 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* Deep field greens anchor the refreshed, advisory-first interface. */
+  --color-leaf-50: #f1f7f0;
+  --color-leaf-100: #e2eee0;
+  --color-leaf-200: #c6dec3;
+  --color-leaf-300: #a5c69f;
+  --color-leaf-400: #7eaa77;
+  --color-leaf-500: #588b55;
+  --color-leaf-600: #3f7147;
+  --color-leaf-700: #2d603b;
+  --color-leaf-800: #224b31;
+  --color-leaf-900: #173a27;
+
+  /* Soil neutrals keep long advice and form labels comfortable to read. */
+  --color-soil-50: #faf9f5;
+  --color-soil-100: #eeece4;
+  --color-soil-200: #dedacd;
+  --color-soil-300: #c3bda9;
+  --color-soil-400: #9c947c;
+  --color-soil-500: #77715e;
+  --color-soil-600: #5f5a4b;
+  --color-soil-700: #494638;
+  --color-soil-800: #343328;
+  --color-soil-900: #24251f;
+
+  /* Sun-warmed sand is reserved for gentle highlights and attention states. */
+  --color-wheat-50: #fffdf6;
+  --color-wheat-100: #faf4e5;
+  --color-wheat-200: #f4e8c9;
+  --color-wheat-300: #ead7a6;
+  --color-wheat-400: #d9bd78;
+  --color-wheat-500: #c39b4b;
+  --color-wheat-600: #9f7937;
+
+  /* Harvest tones bring warmth and contrast to campaign and insight moments. */
+  --color-terracotta-50: #fff3ec;
+  --color-terracotta-100: #fce1d2;
+  --color-terracotta-200: #f5c2a8;
+  --color-terracotta-600: #bd5b3b;
+  --color-terracotta-700: #98442c;
+  --color-citrus-300: #f0c65f;
+  --color-citrus-400: #e7ae3c;
+  --color-citrus-500: #cb8e22;
+}
+
+@layer base {
+  body {
+    @apply bg-soil-50 font-sans text-soil-900 antialiased;
+  }
+}
+
+.glass-surface {
+  border: 1px solid rgb(255 255 255 / 68%);
+  background: rgb(255 251 242 / 82%);
+  box-shadow: 0 24px 70px rgb(23 35 25 / 22%), inset 0 1px 0 rgb(255 255 255 / 70%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
+}
+
+.auth-showcase {
+  min-height: calc(100svh - 8rem);
+}
+
+/* Farm pin on Leaflet maps. Leaflet paths cannot use Tailwind classes, so theme it here. */
+.farm-marker {
+  stroke: var(--color-leaf-800);
+  fill: var(--color-wheat-400);
+}
+
+@keyframes scan-progress {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+
+.scan-progress-indicator {
+  width: 40%;
+  animation: scan-progress 1.35s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-progress-indicator {
+    animation: none;
+    transform: translateX(75%);
+  }
+
+}
+
+@keyframes warning-beacon-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgb(220 38 38 / 22%);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 0 14px rgb(220 38 38 / 0%);
+  }
+}
+
+.warning-beacon {
+  animation: warning-beacon-pulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .warning-beacon {
+    animation: none;
+  }
+}

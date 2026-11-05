@@ -1,0 +1,22 @@
+# Copy this file to .dev.vars for local development (wrangler dev). Never commit .dev.vars.
+# In production, set plain vars in wrangler.jsonc and secrets with `wrangler secret put <NAME>`.
+
+# Origin of the client app allowed to call the API (CORS).
+ALLOWED_ORIGIN=http://localhost:5173
+
+# Firebase project ID from Firebase console > Project settings > General.
+FIREBASE_PROJECT_ID=your-project-id
+
+# Gemini Developer API key used by the authenticated image-recognition endpoint.
+# Create this in Google AI Studio and keep the real key in local .dev.vars or Wrangler secrets.
+GEMINI_API_KEY=your-gemini-api-key
+
+# Optional Azure Speech free-tier credentials for Afrikaans and isiZulu warning audio.
+# Create a Speech resource on the F0 (free) tier. Keep the real key in .dev.vars or Wrangler secrets.
+AZURE_SPEECH_KEY=your-azure-speech-key
+AZURE_SPEECH_REGION=your-speech-resource-region
+
+# Google service account used for scheduled/admin Firestore access.
+# Set the real private key locally in .dev.vars; never commit it.
+GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@your-project-id.iam.gserviceaccount.com
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nreplace-with-private-key\n-----END PRIVATE KEY-----\n"
