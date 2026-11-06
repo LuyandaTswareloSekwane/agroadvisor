@@ -3,6 +3,8 @@ import { APP_LANGUAGES, type AppLanguage } from '../i18n';
 import type {
   LessonIcon,
   LessonStep,
+  LocalizedLessonSteps,
+  StoredLesson,
   LocalizedLessonText,
   VideoLesson,
 } from '../types/lesson';
@@ -30,12 +32,12 @@ function isLocalizedText(value: unknown, maxLength = 2000): value is LocalizedLe
   );
 }
 
-function getEnglishText(value: unknown, maxLength: number): string | null {
+function getLocalizedText(value: unknown, maxLength: number): LocalizedLessonText | null {
   if (typeof value === 'string') {
-    return value.trim().length > 0 && value.length <= maxLength ? value : null;
+    if (value.trim().length === 0 || value.length > maxLength) return null;
+    return { en: value, af: value, zu: value, st: value, tn: value };
   }
-  if (isLocalizedText(value, maxLength)) return value.en;
-  return null;
+  return isLocalizedText(value, maxLength) ? value : null;
 }
 
 function isLessonStep(value: unknown): value is LessonStep {
@@ -53,17 +55,17 @@ function isLessonStepList(value: unknown): value is LessonStep[] {
   return Array.isArray(value) && value.length > 0 && value.length <= 8 && value.every(isLessonStep);
 }
 
-function getEnglishSteps(value: unknown): LessonStep[] | null {
-  if (isLessonStepList(value)) return value;
+function getLocalizedSteps(value: unknown): LocalizedLessonSteps | null {
+  if (isLessonStepList(value)) return { en: value, af: value, zu: value, st: value, tn: value };
   if (!isRecord(value)) return null;
-  const allLanguagesHaveSteps = APP_LANGUAGES.every((language) => isLessonStepList(value[language]));
-  if (!allLanguagesHaveSteps || !isLessonStepList(value.en)) {
+  const { en, af, zu, st, tn } = value;
+  if (!isLessonStepList(en) || !isLessonStepList(af) || !isLessonStepList(zu) || !isLessonStepList(st) || !isLessonStepList(tn)) {
     return null;
   }
-  return value.en;
+  return { en, af, zu, st, tn };
 }
 
-function parseLesson(id: string, value: unknown): VideoLesson {
+function parseLesson(id: string, value: unknown): StoredLesson {
   if (!isRecord(value)) {
     throw new Error(`Published lesson "${id}" has an invalid document.`);
   }
@@ -83,10 +85,10 @@ function parseLesson(id: string, value: unknown): VideoLesson {
     summary,
     keySteps,
   } = value;
-  const englishTopicLabel = getEnglishText(topicLabel, 100);
-  const englishTitle = getEnglishText(title, 160);
-  const englishSummary = getEnglishText(summary, 500);
-  const englishSteps = getEnglishSteps(keySteps);
+  const englishTopicLabel = getLocalizedText(topicLabel, 100);
+  const englishTitle = getLocalizedText(title, 160);
+  const englishSummary = getLocalizedText(summary, 500);
+  const englishSteps = getLocalizedSteps(keySteps);
 
   if (
     typeof topicId !== 'string'
@@ -135,7 +137,7 @@ function parseLesson(id: string, value: unknown): VideoLesson {
 }
 
 /** Loads only lessons that a curator has reviewed and published. */
-export async function getPublishedLessons(): Promise<VideoLesson[]> {
+export async function getPublishedLessons(): Promise<StoredLesson[]> {
   const lessonsQuery = query(
     collection(getFirebaseDb(), LESSONS_COLLECTION),
     where('reviewed', '==', true),
@@ -143,4 +145,15 @@ export async function getPublishedLessons(): Promise<VideoLesson[]> {
   );
   const snapshot = await getDocs(lessonsQuery);
   return snapshot.docs.map((lesson) => parseLesson(lesson.id, lesson.data()));
+}
+
+/** Picks the text of one app language, so a lesson follows the language the farmer selected. */
+export function localizeLesson(lesson: StoredLesson, language: AppLanguage): VideoLesson {
+  return {
+    ...lesson,
+    topicLabel: lesson.topicLabel[language],
+    title: lesson.title[language],
+    summary: lesson.summary[language],
+    keySteps: lesson.keySteps[language],
+  };
 }

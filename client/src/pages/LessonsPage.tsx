@@ -10,7 +10,7 @@ import { useLanguage } from '../hooks/useLanguage';
 import { completeFarmLesson, getCompletedFarmLessonIds, getFarmMemoryErrorMessage } from '../services/farmMemoryService';
 import { getFirestoreErrorMessage } from '../services/firestoreErrors';
 import { getFarm, getFarmLoadErrorMessage } from '../services/farmService';
-import { getPublishedLessons } from '../services/lessonService';
+import { getPublishedLessons, localizeLesson } from '../services/lessonService';
 import type { VideoLesson } from '../types/lesson';
 
 interface LessonTopic {
@@ -21,7 +21,7 @@ interface LessonTopic {
 
 export function LessonsPage() {
   const { user } = useAuth();
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const ownerId = user?.uid ?? null;
   const lessonsState = useAsyncData('published-lessons', getPublishedLessons);
   const farmState = useAsyncData(ownerId, getFarm);
@@ -31,7 +31,7 @@ export function LessonsPage() {
   const topics = useMemo<LessonTopic[]>(() => {
     if (!lessonsState.data) return [];
     const grouped = new Map<string, VideoLesson[]>();
-    for (const lesson of lessonsState.data) {
+    for (const lesson of lessonsState.data.map((stored) => localizeLesson(stored, language))) {
       const current = grouped.get(lesson.topicId) ?? [];
       current.push(lesson);
       grouped.set(lesson.topicId, current);
@@ -41,8 +41,8 @@ export function LessonsPage() {
       id,
       label: lessons[0]?.topicLabel ?? id,
       lessons,
-    })).sort((first, second) => first.label.localeCompare(second.label, 'en-ZA'));
-  }, [lessonsState.data]);
+    })).sort((first, second) => first.label.localeCompare(second.label, language === 'en' ? 'en-ZA' : language));
+  }, [lessonsState.data, language]);
   const completedLessonIds = useMemo(
     () => new Set(completions.data ?? []),
     [completions.data],
