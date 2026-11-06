@@ -90,3 +90,5 @@ Six YouTube videos (IDs 9R-utqpmwmE, JuphSL52GuM, ghmRXT4_osE, cvmYJ3obUds, 13WR
 Final report: reuses the Phase 1 references, reformatted in APA style.
 
 - Presentation guide and pitch deck: built from the project's own code and report; no new external sources.
+
+- 2026-11-06: Afrikaans, isiZulu, Sesotho and Setswana text for the 6 published lessons (topic, summary, key steps) was written by the assistant and written to Firestore. NEEDS VERIFICATION by a fluent speaker. Video titles stay in English; videos are English.
