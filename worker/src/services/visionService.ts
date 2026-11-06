@@ -6,11 +6,22 @@ const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/intera
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+export type VisionLanguage = 'en' | 'af' | 'zu' | 'st' | 'tn';
+export const VISION_LANGUAGES: readonly VisionLanguage[] = ['en', 'af', 'zu', 'st', 'tn'];
+const LANGUAGE_NAMES: Record<VisionLanguage, string> = {
+  en: 'English',
+  af: 'Afrikaans',
+  zu: 'isiZulu',
+  st: 'Sesotho',
+  tn: 'Setswana',
+};
+
 interface ModelRecognition {
   itemName: string | null;
   confidence: number;
   alternatives: string[];
   isRelevant: boolean;
+  localName: string | null;
 }
 
 export class InvalidVisionInputError extends Error {}
@@ -62,11 +73,15 @@ function parseModelRecognition(text: string): ModelRecognition {
     throw new VisionProviderError('The image recognition service returned an invalid result.');
   }
 
+  const parsedLocalName = typeof value.localName === 'string' ? value.localName.trim() : '';
+  const localName = parsedLocalName && parsedLocalName.length <= 60 ? parsedLocalName : null;
+
   return {
     itemName: itemName || null,
     confidence,
     alternatives,
     isRelevant: value.isRelevant,
+    localName,
   };
 }
 
@@ -81,6 +96,7 @@ function toRecognition(result: ModelRecognition): VisionRecognition {
       itemName: result.itemName,
       confidence: result.confidence,
       alternatives: [],
+      localName: result.localName,
     };
   }
 
@@ -89,6 +105,7 @@ function toRecognition(result: ModelRecognition): VisionRecognition {
     itemName: result.itemName,
     confidence: result.confidence,
     alternatives: result.alternatives,
+    localName: result.localName,
   };
 }
 
@@ -96,6 +113,7 @@ export async function identifyFarmImage(
   env: Env,
   image: File,
   itemType: VisionItemType,
+  language: VisionLanguage = 'en',
 ): Promise<VisionRecognition> {
   if (!env.GEMINI_API_KEY) {
     console.error('GEMINI_API_KEY is not configured for the Worker.');
@@ -118,6 +136,9 @@ export async function identifyFarmImage(
     'Only identify an item that is visibly supported by the image. Do not infer from the filename or invent details.',
     'Set itemName to an empty string, confidence to 0, alternatives to [], and isRelevant to false if the image is blank, unclear, unrelated, or does not show an identifiable farm item.',
     'Use a specific everyday name only when the visible evidence supports it. Confidence is your estimated certainty in the top name.',
+    language === 'en'
+      ? 'Set localName to an empty string.'
+      : `Also set localName to the common name of the identified item in ${LANGUAGE_NAMES[language]}, or an empty string if you do not know a reliable ${LANGUAGE_NAMES[language]} name. Keep itemName in English.`,
   ].join(' ');
 
   const bytes = new Uint8Array(await image.arrayBuffer());
@@ -149,6 +170,7 @@ export async function identifyFarmImage(
                 itemName: { type: 'string' },
                 confidence: { type: 'number' },
                 alternatives: { type: 'array', items: { type: 'string' } },
+                localName: { type: 'string' },
                 isRelevant: { type: 'boolean' },
               },
               required: ['itemName', 'confidence', 'alternatives', 'isRelevant'],

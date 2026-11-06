@@ -6,12 +6,14 @@ export type VisionRecognition =
       itemName: string;
       confidence: number;
       alternatives: string[];
+      localName?: string | null;
     }
   | {
       status: 'uncertain';
       itemName: string | null;
       confidence: number;
       alternatives: string[];
+      localName?: string | null;
     }
   | {
       status: 'unknown';

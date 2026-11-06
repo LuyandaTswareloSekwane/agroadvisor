@@ -1,4 +1,4 @@
-﻿export const APP_LANGUAGES = ['en', 'af', 'zu', 'st', 'tn'] as const;
+export const APP_LANGUAGES = ['en', 'af', 'zu', 'st', 'tn'] as const;
 export type AppLanguage = (typeof APP_LANGUAGES)[number];
 
 export const LANGUAGE_NAMES: Record<AppLanguage, string> = {
@@ -367,6 +367,7 @@ const english = {
   'image.identified': 'This looks like {name}.',
   'image.add': 'Add {item}',
   'image.added': '{name} was added to your list.',
+  'farm.unsavedChanges': 'Not saved yet. Press the save button at the bottom to keep your changes.',
   'image.uncertain': 'We are not sure what this is.',
   'image.chooseMatch': 'Choose the closest match or enter the name yourself.',
   'image.unknown': 'We could not identify this {item} from the photo.',
@@ -766,6 +767,7 @@ const translations: Record<Exclude<AppLanguage, 'en'>, Translation> = {
     'image.identified': 'Dit lyk soos {name}.',
     'image.add': 'Voeg {item} by',
     'image.added': '{name} is by jou lys gevoeg.',
+    'farm.unsavedChanges': 'Nog nie gestoor nie. Druk die stoor-knoppie onderaan om jou veranderinge te hou.',
     'image.uncertain': 'Ons is nie seker wat dit is nie.',
     'image.chooseMatch': 'Kies die beste pasmaat of voer self die naam in.',
     'image.unknown': 'Ons kon nie hierdie {item} uit die foto herken nie.',
@@ -1160,6 +1162,7 @@ const translations: Record<Exclude<AppLanguage, 'en'>, Translation> = {
     'image.identified': 'Lokhu kubonakala kuyi-{name}.',
     'image.add': 'Faka {item}',
     'image.added': '{name} ifakiwe kuhlu lwakho.',
+    'farm.unsavedChanges': 'Akukalondolozwa. Cindezela inkinobho yokulondoloza ngezansi ukugcina izinguquko zakho.',
     'image.uncertain': 'Asinaso isiqiniseko sokuthi kuyini lokhu.',
     'image.chooseMatch': 'Khetha okufana kakhulu noma uzifakele igama.',
     'image.unknown': 'Asikwazanga ukubona {item} kulesi sithombe.',
@@ -1554,6 +1557,7 @@ const translations: Record<Exclude<AppLanguage, 'en'>, Translation> = {
     'image.identified': 'Sena se bonahala e le {name}.',
     'image.add': 'Kenya {item}',
     'image.added': '{name} e kentswe lenaneng la hao.',
+    'farm.unsavedChanges': 'Ha ho a bolokoa. Tobetsa konopo ea ho boloka ka tlase ho boloka diphetoho tsa hao.',
     'image.uncertain': 'Ha re na bonnete ba hore sena ke eng.',
     'image.chooseMatch': 'Kgetha se tshwanelang kapa o ngole lebitso ka bowena.',
     'image.unknown': 'Ha re a kgona ho tseba {item} setshwantshong sena.',
@@ -1948,6 +1952,7 @@ const translations: Record<Exclude<AppLanguage, 'en'>, Translation> = {
     'image.identified': 'Seno se lebega e le {name}.',
     'image.add': 'Tsenya {item}',
     'image.added': '{name} e tsentswe mo lenaneng la gago.',
+    'farm.unsavedChanges': 'Ga go a bolokiwa. Tobetsa konopo ya go boloka kwa tlase go boloka diphetogo tsa gago.',
     'image.uncertain': 'Ga re tlhomamise gore seno ke eng.',
     'image.chooseMatch': 'Tlhopha se se batlang se tshwana kgotsa o kwale leina ka bowena.',
     'image.unknown': 'Ga re a kgona go lemoga {item} mo setshwantshong seno.',
@@ -2031,9 +2036,54 @@ const knownFarmTerms: Record<string, string> = {
   poultry: 'term.poultry',
 };
 
+/** Everyday English names (often singular) that the photo scanner may return, mapped to catalogue term ids. */
+const farmTermAliases: Record<string, string> = {
+  corn: 'maize',
+  'sweet corn': 'maize',
+  mealies: 'maize',
+  bean: 'dry-beans',
+  beans: 'dry-beans',
+  'dry bean': 'dry-beans',
+  groundnut: 'groundnuts',
+  peanut: 'groundnuts',
+  peanuts: 'groundnuts',
+  potato: 'potatoes',
+  tomato: 'tomatoes',
+  onion: 'onions',
+  butternut: 'pumpkin',
+  squash: 'pumpkin',
+  'butternut squash': 'pumpkin',
+  cow: 'cattle',
+  cows: 'cattle',
+  bull: 'cattle',
+  ox: 'cattle',
+  oxen: 'cattle',
+  calf: 'cattle',
+  cattle: 'cattle',
+  goat: 'goats',
+  pig: 'pigs',
+  hog: 'pigs',
+  chicken: 'poultry',
+  chickens: 'poultry',
+  hen: 'poultry',
+  hens: 'poultry',
+  rooster: 'poultry',
+  duck: 'poultry',
+  ducks: 'poultry',
+  turkey: 'poultry',
+  turkeys: 'poultry',
+};
+
+/** Returns the catalogue id (e.g. "tomatoes") for an English name or alias, or null for custom names. */
+export function canonicalFarmTermId(name: string): string | null {
+  const lower = name.trim().toLowerCase();
+  if (knownFarmTerms[lower]) return knownFarmTerms[lower].replace('term.', '');
+  return farmTermAliases[lower] ?? null;
+}
+
 export function translateFarmTerm(language: AppLanguage, name: string): string {
-  const key = knownFarmTerms[name.trim().toLowerCase()];
-  return key ? translate(language, key) : name;
+  const id = canonicalFarmTermId(name);
+  return id ? translate(language, `term.${id}`) : name;
 }
 
 export function translateWeatherDescription(

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CROPS } from '../../../../config/knowledge-base/crops';
 import { LIVESTOCK } from '../../../../config/knowledge-base/livestock';
 import { FARM_LIMITS } from '../../utils/validation';
@@ -16,7 +16,7 @@ import { ImageIdentifier } from './ImageIdentifier';
 import { LocationPicker } from './LocationPicker';
 import { PlotSurvey } from './PlotSurvey';
 import { useLanguage } from '../../hooks/useLanguage';
-import { translateFarmTerm } from '../../i18n';
+import { canonicalFarmTermId, translateFarmTerm } from '../../i18n';
 
 interface FarmProfileFormProps {
   initialValues: FarmFormValues;
@@ -67,11 +67,33 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
     onSubmit: (formValues) => onSubmit(normalizeFarmFormValues(formValues, areaUnit)),
     getErrorMessage,
   });
+  const [customNames, setCustomNames] = useState<Record<string, { language: string; name: string }>>({});
+  const savedSnapshot = useRef(JSON.stringify(values));
+  const hasUnsavedChanges = JSON.stringify(values) !== savedSnapshot.current;
   const [isLocating, setIsLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const location = parseLocation(values.latitude, values.longitude);
   const livestockEntries = Object.entries(values.livestock);
+
+  // Warn before a refresh or tab close discards edits that were never saved.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasUnsavedChanges]);
+
+  function rememberLocalName(name: string, localName?: string | null) {
+    if (!localName || language === 'en' || canonicalFarmTermId(name)) return;
+    setCustomNames((current) => ({ ...current, [name.toLocaleLowerCase()]: { language, name: localName } }));
+  }
+
+  function displayTerm(name: string): string {
+    const translated = translateFarmTerm(language, name);
+    const custom = customNames[name.toLocaleLowerCase()];
+    return translated === name && custom?.language === language ? custom.name : translated;
+  }
 
   function setLocation({ latitude, longitude }: FarmLocation) {
     setFieldValue('latitude', formatCoordinate(latitude));
@@ -104,25 +126,28 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
     }
   }
 
-  function addCropName(name: string): boolean {
+  function addCropName(name: string, localName?: string | null): boolean {
     const trimmed = name.trim();
     if (!trimmed || trimmed.length > FARM_LIMITS.maxCropNameLength) return false;
+    const aliasId = canonicalFarmTermId(trimmed);
     const catalogueCrop = CROPS.find(
-      (crop) => crop.id.toLocaleLowerCase() === trimmed.toLocaleLowerCase()
+      (crop) => crop.id === aliasId || crop.id.toLocaleLowerCase() === trimmed.toLocaleLowerCase()
         || crop.label.toLocaleLowerCase() === trimmed.toLocaleLowerCase(),
     );
     const cropName = catalogueCrop?.id ?? trimmed;
     if (values.crops.some((crop) => crop.toLocaleLowerCase() === cropName.toLocaleLowerCase())) return false;
     if (values.crops.length >= FARM_LIMITS.maxCrops) return false;
     setFieldValue('crops', [...values.crops, cropName]);
+    rememberLocalName(cropName, localName);
     return true;
   }
 
-  function addLivestockName(name: string): boolean {
+  function addLivestockName(name: string, localName?: string | null): boolean {
     const trimmed = name.trim();
     if (!trimmed || trimmed.length > FARM_LIMITS.maxCropNameLength) return false;
+    const aliasId = canonicalFarmTermId(trimmed);
     const catalogueAnimal = LIVESTOCK.find(
-      (animal) => animal.id.toLocaleLowerCase() === trimmed.toLocaleLowerCase()
+      (animal) => animal.id === aliasId || animal.id.toLocaleLowerCase() === trimmed.toLocaleLowerCase()
         || animal.label.toLocaleLowerCase() === trimmed.toLocaleLowerCase(),
     );
     const normalizedName = catalogueAnimal?.id ?? trimmed.replace(/\s+/g, ' ');
@@ -131,6 +156,7 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
     );
     if (alreadyExists) return false;
     setFieldValue('livestock', { ...values.livestock, [normalizedName]: values.livestock[normalizedName] ?? '' });
+    rememberLocalName(normalizedName, localName);
     return true;
   }
 
@@ -265,7 +291,7 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
               {values.crops.map((crop) => (
                 <li key={crop} className="flex items-center justify-between gap-3 rounded-xl border border-leaf-100 bg-gradient-to-r from-white to-leaf-50/80 px-3 py-2 transition-transform duration-200 hover:-translate-y-0.5">
                   <span className="text-sm font-semibold text-leaf-900">
-                    {translateFarmTerm(language, getCropLabel(crop))}
+                    {displayTerm(getCropLabel(crop))}
                   </span>
                   <button
                     type="button"
@@ -292,7 +318,7 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
           {livestockEntries.length > 0 && (
             <ul className="space-y-3" aria-label={t('farm.livestockList')}>
               {livestockEntries.map(([id, count]) => {
-                const name = translateFarmTerm(language, LIVESTOCK.find((animal) => animal.id === id)?.label ?? id);
+                const name = displayTerm(LIVESTOCK.find((animal) => animal.id === id)?.label ?? id);
                 return (
                   <li key={id} className="flex flex-wrap items-end gap-3 rounded-xl border border-wheat-200 bg-gradient-to-r from-white to-wheat-50 p-3 transition-transform duration-200 hover:-translate-y-0.5">
                     <span className="min-w-32 flex-1 pb-2 text-sm font-semibold text-soil-800">{name}</span>
@@ -326,7 +352,8 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
         </FormSection>
       </div>
 
-      <div className="border-t border-soil-100 pt-6">
+      <div className="space-y-3 border-t border-soil-100 pt-6">
+        {hasUnsavedChanges && <Alert tone="warning">{t('farm.unsavedChanges')}</Alert>}
         <Button type="submit" isLoading={isSubmitting} fullWidth>
           {isNew ? t('farm.save') : t('farm.saveChanges')}
         </Button>

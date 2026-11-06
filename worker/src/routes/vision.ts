@@ -4,6 +4,8 @@ import { requireFirebaseAuth } from '../middleware/firebaseAuth';
 import {
   identifyFarmImage,
   InvalidVisionInputError,
+  VISION_LANGUAGES,
+  type VisionLanguage,
   VisionProviderError,
 } from '../services/visionService';
 import type { AppEnv } from '../types/env';
@@ -35,7 +37,9 @@ visionRoutes.post('/identify', async (c) => {
   }
 
   try {
-    const result = await identifyFarmImage(c.env, image, itemType);
+    const requestedLanguage = form.get('language');
+    const language = VISION_LANGUAGES.find((item): item is VisionLanguage => item === requestedLanguage) ?? 'en';
+    const result = await identifyFarmImage(c.env, image, itemType, language);
     return ok(c, result, 'Image recognition complete');
   } catch (error) {
     if (error instanceof InvalidVisionInputError) {

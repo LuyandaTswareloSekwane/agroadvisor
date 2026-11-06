@@ -4,11 +4,11 @@ import { identifyFarmImage } from '../../services/visionService';
 import { Button } from '../ui/Button';
 import { TextField } from '../ui/TextField';
 import { useLanguage } from '../../hooks/useLanguage';
-import { translateFarmTerm } from '../../i18n';
+import { canonicalFarmTermId, translateFarmTerm } from '../../i18n';
 
 interface ImageIdentifierProps {
   itemType: VisionItemType;
-  onAdd: (name: string) => boolean;
+  onAdd: (name: string, localName?: string | null) => boolean;
   suggestions?: string[];
 }
 
@@ -54,9 +54,9 @@ export function ImageIdentifier({ itemType, onAdd, suggestions = [] }: ImageIden
     setManualError(null);
     setScan({ status: 'scanning' });
     try {
-      const result = await identifyFarmImage(file, itemType);
+      const result = await identifyFarmImage(file, itemType, language);
       // A confident match goes straight onto the list so the farmer does not have to retype it.
-      if (result.status === 'identified' && result.itemName && onAddRef.current(result.itemName.trim())) {
+      if (result.status === 'identified' && result.itemName && onAddRef.current(result.itemName.trim(), result.localName)) {
         setScan({ status: 'result', result, addedName: result.itemName.trim() });
         return;
       }
@@ -77,7 +77,8 @@ export function ImageIdentifier({ itemType, onAdd, suggestions = [] }: ImageIden
       setShowManualEntry(true);
       return;
     }
-    if (!onAdd(normalized)) {
+    const localName = scan.status === 'result' && normalized === scan.result.itemName ? scan.result.localName : null;
+    if (!onAdd(normalized, localName)) {
       setManualError(t('image.duplicate', { item: label }));
       setShowManualEntry(true);
       return;
@@ -90,6 +91,11 @@ export function ImageIdentifier({ itemType, onAdd, suggestions = [] }: ImageIden
   }
 
   const result = scan.status === 'result' ? scan.result : null;
+  // Catalogue items use the app's own translations; other items use the scanner's local-language name.
+  const displayName = (name: string) =>
+    canonicalFarmTermId(name) || language === 'en' || !result?.localName || name !== result.itemName
+      ? translateFarmTerm(language, name)
+      : result.localName;
   const resultColor =
     result?.status === 'identified'
       ? 'border-leaf-300 bg-leaf-50 text-leaf-900'
@@ -157,12 +163,13 @@ export function ImageIdentifier({ itemType, onAdd, suggestions = [] }: ImageIden
           {result.status === 'identified' && result.itemName ? (
             <>
               <p className="text-sm font-semibold">
-                {t('image.identified', { name: translateFarmTerm(language, result.itemName) })}
+                {t('image.identified', { name: displayName(result.itemName) })}
               </p>
               <p className="mt-1 text-xs">{t('image.confidence', { percent: Math.round(result.confidence * 100) })}</p>
               {scan.status === 'result' && scan.addedName ? (
                 <p className="mt-2 text-sm font-semibold">
-                  {t('image.added', { name: translateFarmTerm(language, scan.addedName) })}
+                  {t('image.added', { name: displayName(scan.addedName) })}
+                  <span className="mt-1 block text-xs font-medium">{t('farm.unsavedChanges')}</span>
                 </p>
               ) : (
                 <Button className="mt-3" size="sm" onClick={() => addName(result.itemName ?? '')}>
@@ -180,7 +187,7 @@ export function ImageIdentifier({ itemType, onAdd, suggestions = [] }: ImageIden
                   .filter((name, index, names) => names.findIndex((candidate) => candidate.toLocaleLowerCase() === name.toLocaleLowerCase()) === index)
                   .map((name) => (
                     <Button key={name} size="sm" variant="secondary" onClick={() => addName(name)}>
-                      {translateFarmTerm(language, name)}
+                      {displayName(name)}
                     </Button>
                   ))}
               </div>
