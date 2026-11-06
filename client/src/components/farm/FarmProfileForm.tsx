@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { CROPS } from '../../../../config/knowledge-base/crops';
 import { LIVESTOCK } from '../../../../config/knowledge-base/livestock';
 import { FARM_LIMITS } from '../../utils/validation';
@@ -7,6 +7,7 @@ import type { FarmFormValues, FarmLocation } from '../../types/farm';
 import { ACRES_PER_HECTARE, formatCoordinate, prepareFarmPhoto } from '../../utils/farmForm';
 import { getCropLabel } from '../../utils/farmLabels';
 import { getCurrentLocation } from '../../utils/geolocation';
+import { lookupNearbyTown } from '../../services/placeService';
 import { validateFarm } from '../../utils/validation';
 import { Alert } from '../ui/Alert';
 import { Button } from '../ui/Button';
@@ -39,7 +40,7 @@ function convertArea(value: string, from: AreaUnit, to: AreaUnit): string {
 function normalizeFarmFormValues(values: FarmFormValues, areaUnit: AreaUnit): FarmFormValues {
   return {
     ...values,
-    locationName: values.locationName.trim() || values.name.trim(),
+    locationName: values.locationName.trim(),
     sizeHectares: areaUnit === 'acres' && values.sizeHectares.trim()
       ? String(Number(values.sizeHectares) / ACRES_PER_HECTARE)
       : values.sizeHectares,
@@ -73,7 +74,16 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
   const [isLocating, setIsLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
-  const location = parseLocation(values.latitude, values.longitude);
+  const [isPreparingPhoto, setIsPreparingPhoto] = useState(false);
+  const preparingPhoto = useRef(false);
+  const [mapLocation, setMapLocation] = useState<FarmLocation | null>(
+    () => parseLocation(initialValues.latitude, initialValues.longitude),
+  );
+  const [placeStatus, setPlaceStatus] = useState<'idle' | 'loading' | 'notFound' | 'error'>('idle');
+  const [placeLookupRequest, setPlaceLookupRequest] = useState(0);
+  const manuallyEditedPlace = useRef(false);
+  const lastCoordinates = useRef(JSON.stringify([initialValues.latitude, initialValues.longitude, 0]));
+  const placeLookupVersion = useRef(0);
   const livestockEntries = Object.entries(values.livestock);
 
   // Warn before a refresh or tab close discards edits that were never saved.
@@ -83,6 +93,35 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    const coordinates = JSON.stringify([values.latitude, values.longitude, placeLookupRequest]);
+    if (lastCoordinates.current === coordinates) return;
+    lastCoordinates.current = coordinates;
+    const location = parseLocation(values.latitude, values.longitude);
+    if (!location) {
+      setPlaceStatus('idle');
+      return;
+    }
+    let active = true;
+    const version = placeLookupVersion.current;
+    setPlaceStatus('loading');
+    const timer = window.setTimeout(() => {
+      lookupNearbyTown(location).then((name) => {
+        if (!active || version !== placeLookupVersion.current || manuallyEditedPlace.current) return;
+        setFieldValue('locationName', name ?? '');
+        setPlaceStatus(name ? 'idle' : 'notFound');
+      }, (error: unknown) => {
+        if (!active || version !== placeLookupVersion.current || manuallyEditedPlace.current) return;
+        console.error('Nearby town lookup failed:', error);
+        setPlaceStatus('error');
+      });
+    }, 500);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [values.latitude, values.longitude, placeLookupRequest]);
 
   function rememberLocalName(name: string, localName?: string | null) {
     if (!localName || language === 'en' || canonicalFarmTermId(name)) return;
@@ -96,8 +135,23 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
   }
 
   function setLocation({ latitude, longitude }: FarmLocation) {
-    setFieldValue('latitude', formatCoordinate(latitude));
-    setFieldValue('longitude', formatCoordinate(longitude));
+    const nextLatitude = formatCoordinate(latitude);
+    const nextLongitude = formatCoordinate(longitude);
+    if (nextLatitude !== values.latitude || nextLongitude !== values.longitude) {
+      placeLookupVersion.current += 1;
+      manuallyEditedPlace.current = false;
+      setFieldValue('locationName', '');
+      setFieldValue('latitude', nextLatitude);
+      setFieldValue('longitude', nextLongitude);
+    }
+    setMapLocation({ latitude, longitude });
+  }
+
+  function changeCoordinate(event: ChangeEvent<HTMLInputElement>) {
+    placeLookupVersion.current += 1;
+    manuallyEditedPlace.current = false;
+    setFieldValue('locationName', '');
+    handleChange(event);
   }
 
   async function handleUseMyLocation() {
@@ -113,17 +167,31 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
   }
 
   async function handleFarmPhotoChange(file: File | undefined) {
-    if (!file) return;
+    if (!file || preparingPhoto.current) return;
     setPhotoError(null);
     if (file.size > 12 * 1024 * 1024) {
       setPhotoError(t('farm.photoTooLarge'));
       return;
     }
+    preparingPhoto.current = true;
+    setIsPreparingPhoto(true);
     try {
       setFieldValue('photoDataUrl', await prepareFarmPhoto(file));
-    } catch {
+    } catch (error) {
+      console.error('Could not prepare farm photo:', error);
       setPhotoError(t('farm.photoFailed'));
+    } finally {
+      preparingPhoto.current = false;
+      setIsPreparingPhoto(false);
     }
+  }
+
+  function submitFarm(event: FormEvent<HTMLFormElement>) {
+    if (preparingPhoto.current) {
+      event.preventDefault();
+      return;
+    }
+    void handleSubmit(event);
   }
 
   function addCropName(name: string, localName?: string | null): boolean {
@@ -171,7 +239,7 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-6">
+    <form onSubmit={submitFarm} noValidate className="space-y-6">
       {formError && <Alert tone="error">{formError}</Alert>}
 
       <section className="relative isolate flex flex-col gap-4 overflow-hidden rounded-2xl border border-leaf-200 bg-gradient-to-br from-leaf-50 via-white to-wheat-50 p-4 shadow-sm sm:flex-row sm:items-center sm:p-5">
@@ -198,6 +266,7 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
+                disabled={isPreparingPhoto || isSubmitting}
                 className="sr-only"
                 aria-label={t('farm.choosePhoto')}
                 onChange={(event) => {
@@ -207,11 +276,15 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
               />
             </label>
             {values.photoDataUrl && (
-              <Button variant="secondary" size="sm" onClick={() => setFieldValue('photoDataUrl', null)}>
+              <Button variant="secondary" size="sm" disabled={isPreparingPhoto || isSubmitting} onClick={() => setFieldValue('photoDataUrl', null)}>
                 {t('farm.removePhoto')}
               </Button>
             )}
           </div>
+          {isPreparingPhoto && <p className="mt-2 text-sm text-soil-700" role="status">{t('farm.photoPreparing')}</p>}
+          {!isPreparingPhoto && values.photoDataUrl !== initialValues.photoDataUrl && (
+            <p className="mt-2 text-sm text-soil-700" role="status">{t('farm.unsavedChanges')}</p>
+          )}
           {photoError && <p className="mt-2 text-sm font-medium text-red-700" role="alert">{photoError}</p>}
         </div>
       </section>
@@ -272,10 +345,69 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
           </Button>
         </div>
         {locateError && <Alert tone="warning">{locateError}</Alert>}
-        <LocationPicker value={location} onChange={setLocation} />
-        {(errors.latitude || errors.longitude) && (
-          <p className="text-sm font-medium text-red-700" role="alert">{errors.latitude ?? errors.longitude}</p>
+        <TextField
+          id="locationName"
+          name="locationName"
+          label={t('farm.nearbyTown')}
+          value={values.locationName}
+          onChange={(event) => {
+            placeLookupVersion.current += 1;
+            manuallyEditedPlace.current = true;
+            setPlaceStatus('idle');
+            handleChange(event);
+          }}
+          error={errors.locationName}
+        />
+        <div>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!parseLocation(values.latitude, values.longitude) || placeStatus === 'loading' || isSubmitting}
+            onClick={() => {
+              placeLookupVersion.current += 1;
+              manuallyEditedPlace.current = false;
+              setFieldValue('locationName', '');
+              setPlaceStatus('loading');
+              setPlaceLookupRequest((current) => current + 1);
+            }}
+          >
+            {t('farm.findNearbyTown')}
+          </Button>
+        </div>
+        {placeStatus === 'loading' && <p role="status" className="text-sm text-soil-700">{t('farm.placeLoading')}</p>}
+        {(placeStatus === 'notFound' || placeStatus === 'error') && (
+          <p role="alert" className="text-sm text-red-700">{t(placeStatus === 'error' ? 'farm.placeError' : 'farm.placeNotFound')}</p>
         )}
+        <p className="text-xs text-soil-600">
+          {t('farm.placeCredit')}{' '}
+          <a className="underline" href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a>
+          {' · '}<a className="underline" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextField
+            id="latitude"
+            name="latitude"
+            label={t('farm.latitude')}
+            type="text"
+            inputMode="decimal"
+            value={values.latitude}
+            onChange={changeCoordinate}
+            onBlur={() => setMapLocation(parseLocation(values.latitude, values.longitude))}
+            error={errors.latitude}
+          />
+          <TextField
+            id="longitude"
+            name="longitude"
+            label={t('farm.longitude')}
+            type="text"
+            inputMode="decimal"
+            value={values.longitude}
+            onChange={changeCoordinate}
+            onBlur={() => setMapLocation(parseLocation(values.latitude, values.longitude))}
+            error={errors.longitude}
+          />
+        </div>
+        <LocationPicker value={mapLocation} onChange={setLocation} />
       </FormSection>
 
       <div className="grid items-start gap-4 md:grid-cols-2">
@@ -354,7 +486,7 @@ export function FarmProfileForm({ initialValues, isNew, onSubmit, getErrorMessag
 
       <div className="space-y-3 border-t border-soil-100 pt-6">
         {hasUnsavedChanges && <Alert tone="warning">{t('farm.unsavedChanges')}</Alert>}
-        <Button type="submit" isLoading={isSubmitting} fullWidth>
+        <Button type="submit" isLoading={isSubmitting} disabled={isPreparingPhoto || placeStatus === 'loading'} fullWidth>
           {isNew ? t('farm.save') : t('farm.saveChanges')}
         </Button>
       </div>

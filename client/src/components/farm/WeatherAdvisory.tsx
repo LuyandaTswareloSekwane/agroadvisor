@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Farm } from '../../types/farm';
 import { getPrimaryWeatherAlert, getWeatherAdvice, isWeatherAlertImminent, isWeatherHazard } from '../../utils/weatherAdvice';
+import { readWarningDismissal, warningLocationKey, WARNING_REMINDER_MS, type WarningDismissal } from '../../utils/weatherWarningReminder';
 import { getFarmWeatherForecast } from '../../services/weatherService';
 import { synthesizeWarning } from '../../services/speechService';
 import { WorkerApiError } from '../../services/workerApi';
@@ -64,13 +65,18 @@ function waitForLanguageVoice(language: AppLanguage): Promise<SpeechSynthesisVoi
 export function WeatherAdvisory({ ownerId, farm, firstName }: WeatherAdvisoryProps) {
   const { language, t } = useLanguage();
   const forecast = useAsyncData(ownerId, getFarmWeatherForecast);
-  const [dismissedAlertKey, setDismissedAlertKey] = useState<string | null>(() => {
+  const locationKey = warningLocationKey(farm.location);
+  const storageKey = `agroadvisor-warning-reminder:${ownerId}`;
+  const [dismissal, setDismissal] = useState<WarningDismissal | null>(() => {
     try {
-      return window.sessionStorage.getItem(`agroadvisor-dismissed-warning:${ownerId}`);
-    } catch {
+      return readWarningDismissal(window.sessionStorage.getItem(storageKey), locationKey, Date.now());
+    } catch (error) {
+      console.warn('Could not read the weather warning reminder:', error);
       return null;
     }
   });
+  const [isRefreshingReminder, setIsRefreshingReminder] = useState(false);
+  const reminderRefreshStarted = useRef(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const dialog = useRef<HTMLElement>(null);
@@ -89,7 +95,36 @@ export function WeatherAdvisory({ ownerId, farm, firstName }: WeatherAdvisoryPro
   const isImminent = Boolean(
     primaryAlert && forecast.data && isWeatherAlertImminent(primaryAlert, forecast.data.current.time),
   );
-  const isPopupOpen = isImminent && dismissedAlertKey !== alertKey;
+  const isPopupOpen = isImminent && !forecast.isLoading && !isRefreshingReminder && dismissal?.alertId !== alertKey;
+
+  useEffect(() => {
+    try {
+      // Recording the current location also clears an old dismissal after a move to a safe location.
+      window.sessionStorage.setItem(storageKey, JSON.stringify(dismissal ?? { location: locationKey }));
+    } catch (error) {
+      console.warn('Could not save the weather warning reminder:', error);
+    }
+  }, [dismissal, locationKey, storageKey]);
+
+  useEffect(() => {
+    if (!dismissal) return;
+    const timer = window.setTimeout(() => {
+      reminderRefreshStarted.current = false;
+      setIsRefreshingReminder(true);
+      forecast.reload();
+    }, Math.max(0, dismissal.remindAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [dismissal, forecast.reload]);
+
+  useEffect(() => {
+    if (!isRefreshingReminder) return;
+    if (forecast.isLoading) {
+      reminderRefreshStarted.current = true;
+    } else if (reminderRefreshStarted.current) {
+      setDismissal(null);
+      setIsRefreshingReminder(false);
+    }
+  }, [forecast.isLoading, isRefreshingReminder]);
 
   const clearAudio = useCallback(() => {
     const player = audioPlayer.current;
@@ -215,13 +250,9 @@ export function WeatherAdvisory({ ownerId, farm, firstName }: WeatherAdvisoryPro
 
   const dismissWarning = useCallback(() => {
     stopPlayback();
-    setDismissedAlertKey(alertKey);
-    try {
-      window.sessionStorage.setItem(`agroadvisor-dismissed-warning:${ownerId}`, alertKey);
-    } catch {
-      setDismissedAlertKey(alertKey);
-    }
-  }, [alertKey, ownerId, stopPlayback]);
+    spokenAlertKey.current = null;
+    setDismissal({ location: locationKey, alertId: alertKey, remindAt: Date.now() + WARNING_REMINDER_MS });
+  }, [alertKey, locationKey, stopPlayback]);
 
   function readWarningAloud() {
     if (isSpeaking) {

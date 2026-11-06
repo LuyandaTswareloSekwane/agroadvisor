@@ -33,7 +33,14 @@ export function DashboardPage() {
           </Button>
         </div>
       ) : farm.data ? (
-        uid && <WeatherAdvisory ownerId={uid} farm={farm.data} firstName={firstName} />
+        uid && (
+          <WeatherAdvisory
+            key={JSON.stringify([uid, farm.data.location.latitude, farm.data.location.longitude])}
+            ownerId={uid}
+            farm={farm.data}
+            firstName={firstName}
+          />
+        )
       ) : (
         <Card className="text-center sm:p-8">
           <h2 className="text-lg font-semibold text-leaf-800">{t('dashboard.setupTitle')}</h2>

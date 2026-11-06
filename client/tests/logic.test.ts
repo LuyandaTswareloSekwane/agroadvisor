@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import type { Farm, FarmFormValues } from '../src/types/farm';
 import type { DailyWeather, FarmWeatherForecast } from '../src/types/weather';
 import { getPrimaryWeatherAlert, getWeatherAdvice, isWeatherAlertImminent } from '../src/utils/weatherAdvice';
+import { readWarningDismissal, warningLocationKey, WARNING_REMINDER_MS } from '../src/utils/weatherWarningReminder';
+import { findNearbyTown } from '../src/services/placeService';
 import { PASSWORD_MIN_LENGTH, validateFarm, validateLogin, validateRegister } from '../src/utils/validation';
 
 const TODAY = '2026-11-05';
@@ -63,6 +65,17 @@ function forecast(days: DailyWeather[], currentTemp = 24): FarmWeatherForecast {
 
 const hazardIds = (days: DailyWeather[]) => getWeatherAdvice(forecast(days), farm).map((a) => a.id.split(':')[0]);
 
+test('nearby town lookup chooses the nearest place, and declines distant matches', () => {
+  const towns: [string, number, number][] = [
+    ['Kimberley', -28.74, 24.77],
+    ['Musina', -22.34881, 30.04074],
+  ];
+  assert.equal(findNearbyTown({ latitude: -22.34, longitude: 30.04 }, towns), 'Musina');
+  assert.equal(findNearbyTown({ latitude: -28.74, longitude: 24.77 }, towns), 'Kimberley');
+  assert.equal(findNearbyTown({ latitude: 0, longitude: 0 }, towns), null);
+  assert.equal(findNearbyTown({ latitude: 0, longitude: 179.99 }, [['Across the dateline', 0, -179.99]]), 'Across the dateline');
+});
+
 test('TC-U01 a calm forecast produces no alerts', () => {
   assert.equal(getWeatherAdvice(forecast([day({})]), farm).length, 0);
 });
@@ -70,6 +83,35 @@ test('TC-U01 a calm forecast produces no alerts', () => {
 test('TC-U02 heat alert triggers at 35 C but not at 34.9 C', () => {
   assert.equal(hazardIds([day({ temperatureMaxC: 34.9 })]).length, 0);
   assert.ok(hazardIds([day({ temperatureMaxC: 35 })]).length > 0);
+});
+
+test('heat today or tomorrow produces an imminent warning', () => {
+  const currentAlert = getPrimaryWeatherAlert(getWeatherAdvice(forecast([day({})], 35), farm));
+  assert.ok(currentAlert);
+  assert.equal(currentAlert.id, `heat:${TODAY}`);
+  assert.equal(isWeatherAlertImminent(currentAlert, `${TODAY}T12:00`), true);
+
+  const tomorrowAlert = getPrimaryWeatherAlert(getWeatherAdvice(forecast([
+    day({ temperatureMaxC: 35 }, '2026-11-06'),
+  ]), farm));
+  assert.ok(tomorrowAlert);
+  assert.equal(tomorrowAlert.id, 'heat:2026-11-06');
+  assert.equal(isWeatherAlertImminent(tomorrowAlert, `${TODAY}T12:00`), true);
+});
+
+test('warning dismissals expire after one hour and do not follow a moved farm', () => {
+  const first = warningLocationKey({ latitude: -22.34, longitude: 30.04 });
+  const moved = warningLocationKey({ latitude: -22.340001, longitude: 30.04 });
+  const now = 1_000_000;
+  const dismissal = { location: first, alertId: 'heat:2026-11-05', remindAt: now + WARNING_REMINDER_MS };
+  const stored = JSON.stringify(dismissal);
+
+  assert.deepEqual(readWarningDismissal(stored, first, now), dismissal);
+  assert.deepEqual(readWarningDismissal(stored, first, dismissal.remindAt - 1), dismissal);
+  assert.equal(readWarningDismissal(stored, first, dismissal.remindAt), null);
+  assert.equal(readWarningDismissal(stored, moved, now), null);
+  assert.equal(readWarningDismissal(JSON.stringify({ location: moved }), first, now), null);
+  assert.equal(readWarningDismissal('heat:2026-11-05', first, now), null);
 });
 
 test('TC-U03 frost alert triggers at 2 C but not at 2.1 C', () => {

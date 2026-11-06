@@ -8,11 +8,11 @@ AI-powered farm advisory platform for smallholder farmers. It interprets weather
 | ---------- | -------------------------------------------------------------------------- |
 | `client/`  | React + TypeScript + Vite + Tailwind web app (deployed to Cloudflare Pages) |
 | `worker/`  | Cloudflare Worker API (Hono + TypeScript), all routes under `/api`          |
-| `scripts/` | Local Node scripts for seeding Firestore (added in a later module)          |
+| `scripts/` | Local Node scripts for seeding Firestore                                   |
 
 ## Prerequisites
 
-- Node.js 20 or newer
+- Node.js 22 or newer
 
 ## Firebase project setup
 
@@ -30,13 +30,15 @@ The authenticated `GET /api/weather/forecast` endpoint reads the caller's `farms
 
 On the farm map, temperature-band controls highlight nearby forecast points; selecting a point shows its estimated temperature and approximate coordinates. These are forecast-grid estimates, not exact field readings or named locations.
 
-Farmers may optionally add a profile photo. The client resizes it to JPEG and stores it on the owner's farm document, capped at 100,000 characters; no separate paid storage service is used.
+Farmers may optionally add a profile photo. The client resizes it to JPEG and stores it on the owner's farm document, capped at 100,000 characters; no separate paid storage service is used. The farmer must save the farm profile after selecting or removing a photo. Saving is disabled while the photo is being prepared.
+
+When farm coordinates change, the form estimates the nearest town within 50 km using locally loaded GeoNames data; farmers can correct the displayed name before saving. For previously saved coordinates, use **Find nearby town** to update an outdated town name. No coordinate is sent to a geocoder. If no nearby place is found or the town data cannot be loaded, the farmer must enter a town or village. The dataset includes South African places from the GeoNames cities5000 extract and other places with at least 15,000 inhabitants; smaller settlements may be missing. Source: [GeoNames](https://www.geonames.org/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), extract dated 6 November 2026.
 
 Farmers can identify crops, products, and livestock by taking or uploading a photo in the farm profile. The authenticated Worker sends the image to Gemini for recognition and returns a high-confidence name, uncertain alternatives, or an unknown result with a manual-entry fallback. Photos must be JPEG, PNG, or WebP and no larger than 6 MB. Images are sent to Google's Gemini API for analysis; review Google's current privacy terms, API limits, and pricing before enabling this feature.
 
-The recognition status uses the model's estimated confidence (80% or higher: identified, 50–79%: uncertain, below 50% or not relevant: unknown); this is an estimate, not a calibrated accuracy guarantee. The result is shown for farmer confirmation before it is added to the farm profile.
+The recognition status uses the model's estimated confidence (80% or higher: identified, 50–79%: uncertain, below 50% or not relevant: unknown); this is an estimate, not a calibrated accuracy guarantee. Identified names are added to the form automatically; uncertain results need a farmer's selection. The farmer must save the profile to retain changes.
 
-The dashboard checks current and seven-day forecasts for high heat, very low temperatures, heavy rainfall, damaging gusts, and thunderstorms, and presents actionable on-screen warnings. Its seven-day outlook is forecast-only (not a record of past farm activity) and provides expandable actions for risk days. It foregrounds the soonest risk, opens an interruptive warning only for a hazard due today or tomorrow, and summarizes additional risk days rather than listing every forecast alert. Weather risk thresholds live in `config/knowledge-base/weather-risks.ts`; warnings are precautionary and custom crop names receive general farm-protection guidance.
+The dashboard checks current and seven-day forecasts for high heat, very low temperatures, heavy rainfall, damaging gusts, and thunderstorms, and presents actionable on-screen warnings. Its seven-day outlook is forecast-only (not a record of past farm activity) and provides expandable actions for risk days. It foregrounds the soonest risk, opens an interruptive warning only for a hazard due today or tomorrow, and summarizes additional risk days rather than listing every forecast alert. After a warning is dismissed, the open dashboard refreshes the forecast and reminds the farmer after one hour if an imminent risk still exists. Saving a different farm location resets the dismissal, even if the same hazard was dismissed at the previous location. Reminders are in-app and require the dashboard to be open; they are not background push notifications. Weather risk thresholds live in `config/knowledge-base/weather-risks.ts`; warnings are precautionary and custom crop names receive general farm-protection guidance.
 
 The client includes English, Afrikaans, isiZulu, Sesotho, and Setswana interface and weather-advice translations. The selected language is stored in the browser on that device. Severe-weather dialogs attempt a spoken warning when opened and provide a listen/stop control. Afrikaans and isiZulu can use Azure Speech's F0 (free) Neural TTS tier; Sesotho, Setswana, and English use an installed browser voice when available. If speech is unavailable, the app keeps the complete warning on screen instead of silently reading it in the wrong language. Cloud speech sends the warning text, including the farm name and location, to Azure; configure it only if that is acceptable for your deployment.
 
@@ -57,7 +59,29 @@ Each lesson document must include:
 - `visualOnly`: whether the clip can be followed visually; `fallbackPriority`: a non-negative integer, lower values preferred when a farmer's language is unavailable.
 - `reviewed` and `published`: both must be set to `true` only after a curator has checked the video, English summary, and steps against the video. Draft and unreviewed content stays hidden from farmers.
 
-Lesson titles, summaries, and key steps are shown in English regardless of the interface language; the page labels this clearly. YouTube iframes are not created until the farmer chooses to load a video. Add a visible source link for every lesson and verify instructional claims before publishing. No lesson videos are currently seeded, so the page remains in its empty state until a curator publishes verified lesson records in Firestore. See [SOURCES.md](./SOURCES.md) for the video embed source and curation status.
+Lesson topic labels, summaries, and key steps can appear in the selected interface language when localized content is available; for example, Setswana content has been observed. Video titles may remain in English. Plain-string fields are shown unchanged in every interface language, and translations must be verified before publication. The app also supports localized titles when supplied. YouTube iframes are not created until the farmer chooses to load a video. Add a visible source link for every lesson and verify instructional claims before publishing. A fresh project with no reviewed and published lessons shows an empty Learn page until a curator publishes verified lesson records. See [SOURCES.md](./SOURCES.md) for the video embed source and curation status.
+
+### Optional local lesson draft seed
+
+The local Node script seeds the six candidates in [docs/lesson-candidates-draft.md](./docs/lesson-candidates-draft.md) into a **fresh, explicitly selected Firebase project**. It does not publish or review them. Do not run it against the current live project or any project whose ID you have not independently verified. Admin SDK writes bypass Firestore Security Rules, so use an identity with permission to write only to the intended project. No credentials or secrets belong in this repository.
+
+Prerequisites: Node.js 22+, an initialized Firestore database in the target Firebase project, and Application Default Credentials (ADC) with Firestore write access. For example, with Google Cloud CLI installed and your intended account selected, run `gcloud auth application-default login`; Firebase CLI login alone is not ADC. Alternatively use an existing approved ADC configuration. Keep any credentials outside the repository. The script does not use a default project: it requires the project ID twice. Unset `FIRESTORE_EMULATOR_HOST` if set.
+
+From the repository root in PowerShell, replacing **both** placeholders with the same verified fresh project ID:
+
+```powershell
+cd scripts
+npm install
+npm test
+npm run seed:lessons -- --project YOUR_FRESH_PROJECT_ID --confirm-fresh-project YOUR_FRESH_PROJECT_ID
+cd ..
+```
+
+Each document is stored at `lessons/{youtubeId}` with the candidate title, topic, channel, video ID and duration. `reviewed` and `published` are `false`; unverified `language` and `summary` are empty strings, `keySteps` is an empty array, and `visualOnly` and `fallbackPriority` are `null`. These deliberately incomplete placeholders **do not satisfy the published lesson schema** and are not publishable. The candidate's topic is only a label, not a verified instructional claim.
+
+The six creates are committed as one atomic batch. If any of those six document IDs already exists, the entire batch fails and no existing document is overwritten; resolve the conflict manually before retrying. Other existing documents with different IDs are not detected as duplicates. Permission, authentication, and network failures also cause a nonzero exit; check the error and the target project before retrying. If a network failure leaves the commit outcome uncertain, inspect the six IDs in the selected project's Firebase console before retrying.
+
+A curator must watch each video, verify language, relevance and any claims, write a faithful English summary and one to eight actual icon-based steps, and decide visual-only suitability and fallback priority. Pay particular attention to the lower-confidence South African business candidate noted in the candidate document. Correct or omit unsuitable candidates. Only after completing and checking all required fields should the curator set **both** `reviewed` and `published` to `true`. Seeding alone never makes lessons visible; Learn remains empty in a fresh project until reviewed lessons are published.
 
 ## Farm memory
 

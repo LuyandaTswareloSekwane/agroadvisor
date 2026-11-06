@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "agroadvisor-client",
   "private": true,
   "version": "0.1.0",
@@ -8,7 +8,7 @@
     "dev:emulator": "vite --mode emulator",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "test:unit": "rolldown tests/logic.test.ts --format esm --platform node -d .test-build && node --test .test-build/logic.test.js",
+    "test:unit": "rolldown tests/logic.test.ts tests/vision.test.ts --format esm --platform node -d .test-build && node --test .test-build/logic.test.js .test-build/vision.test.js",
     "test:firestore-rules": "firebase --config ../firebase.json emulators:exec --only firestore --project demo-agroadvisor \"node --test tests/firestore.rules.test.mjs\"",
     "preview": "vite preview"
   },
@@ -34,4 +34,3 @@
     "vite": "^8.3.1"
   }
 }
-
