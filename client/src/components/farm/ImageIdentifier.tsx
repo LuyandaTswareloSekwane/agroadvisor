@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { VisionItemType, VisionRecognition } from '../../types/vision';
 import { identifyFarmImage } from '../../services/visionService';
 import { Button } from '../ui/Button';
@@ -15,7 +15,7 @@ interface ImageIdentifierProps {
 type ScanState =
   | { status: 'idle' }
   | { status: 'scanning' }
-  | { status: 'result'; result: VisionRecognition }
+  | { status: 'result'; result: VisionRecognition; addedName?: string }
   | { status: 'error'; message: string };
 
 const imageSizeLimit = 6 * 1024 * 1024;
@@ -32,6 +32,8 @@ export function ImageIdentifier({ itemType, onAdd, suggestions = [] }: ImageIden
   const [manualName, setManualName] = useState('');
   const [manualError, setManualError] = useState<string | null>(null);
   const isLivestock = itemType === 'livestock';
+  const onAddRef = useRef(onAdd);
+  onAddRef.current = onAdd;
   const label = t(isLivestock ? 'image.animal' : 'image.cropAnimal');
   const itemLabel = t(isLivestock ? 'image.pickAnimal' : 'image.pickCrop');
 
@@ -53,6 +55,11 @@ export function ImageIdentifier({ itemType, onAdd, suggestions = [] }: ImageIden
     setScan({ status: 'scanning' });
     try {
       const result = await identifyFarmImage(file, itemType);
+      // A confident match goes straight onto the list so the farmer does not have to retype it.
+      if (result.status === 'identified' && result.itemName && onAddRef.current(result.itemName.trim())) {
+        setScan({ status: 'result', result, addedName: result.itemName.trim() });
+        return;
+      }
       setScan({ status: 'result', result });
     } catch (error) {
       setScan({ status: 'error', message: scanErrorMessage(error, t('image.failed')) });
@@ -91,7 +98,7 @@ export function ImageIdentifier({ itemType, onAdd, suggestions = [] }: ImageIden
         : 'border-red-300 bg-red-50 text-red-950';
   const barColor =
     scan.status === 'scanning'
-      ? 'bg-leaf-600'
+      ? 'scan-gradient'
       : result?.status === 'identified'
         ? 'bg-leaf-600'
         : result?.status === 'uncertain'
@@ -153,9 +160,15 @@ export function ImageIdentifier({ itemType, onAdd, suggestions = [] }: ImageIden
                 {t('image.identified', { name: translateFarmTerm(language, result.itemName) })}
               </p>
               <p className="mt-1 text-xs">{t('image.confidence', { percent: Math.round(result.confidence * 100) })}</p>
-              <Button className="mt-3" size="sm" onClick={() => addName(result.itemName ?? '')}>
-                {t('image.add', { item: label })}
-              </Button>
+              {scan.status === 'result' && scan.addedName ? (
+                <p className="mt-2 text-sm font-semibold">
+                  {t('image.added', { name: translateFarmTerm(language, scan.addedName) })}
+                </p>
+              ) : (
+                <Button className="mt-3" size="sm" onClick={() => addName(result.itemName ?? '')}>
+                  {t('image.add', { item: label })}
+                </Button>
+              )}
             </>
           ) : result.status === 'uncertain' ? (
             <>

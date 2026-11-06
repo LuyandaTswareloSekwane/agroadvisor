@@ -85,8 +85,13 @@
 }
 
 .scan-progress-indicator {
-  width: 40%;
-  animation: scan-progress 1.35s ease-in-out infinite;
+  width: 45%;
+  animation: scan-progress 1.2s ease-in-out infinite;
+}
+
+/* Green-to-gold gradient so the farmer can see the photo is being analysed. */
+.scan-gradient {
+  background-image: linear-gradient(90deg, var(--color-leaf-300), var(--color-leaf-600), var(--color-citrus-400), var(--color-leaf-500));
 }
 
 @media (prefers-reduced-motion: reduce) {

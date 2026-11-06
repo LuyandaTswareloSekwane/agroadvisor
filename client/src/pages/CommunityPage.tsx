@@ -8,7 +8,8 @@ import { PageLoader } from '../components/ui/PageLoader';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
-import { LANGUAGE_LOCALES } from '../i18n';
+import { LANGUAGE_LOCALES, type AppLanguage } from '../i18n';
+import { formatLocalizedDate } from '../utils/weatherAdvice';
 import {
   addCommunityObservation,
   CommunityObservationValidationError,
@@ -57,8 +58,8 @@ function observationColor(type: CommunityObservationType): string {
   return 'bg-amber-500';
 }
 
-function formatObservationDate(observation: CommunityObservation, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(observation.createdAt.toDate());
+function formatObservationDate(observation: CommunityObservation, language: AppLanguage): string {
+  return formatLocalizedDate(observation.createdAt.toDate(), language);
 }
 
 export function CommunityPage() {
@@ -344,7 +345,7 @@ export function CommunityPage() {
                           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                             <span className="text-xs font-bold text-leaf-800">{t(`community.type.${observation.type}`)}</span>
                             <time className="text-xs text-soil-500" dateTime={observation.createdAt.toDate().toISOString()}>
-                              {formatObservationDate(observation, locale)}
+                              {formatObservationDate(observation, language)}
                             </time>
                           </div>
                           <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-soil-500">{t('community.farmerReported')}</p>

@@ -69,6 +69,12 @@ export function formatForecastDate(date: string, language: AppLanguage): string 
     : `${weekday} ${day} ${month}`;
 }
 
+/** Day, month name and optional year in the chosen language, using the app's own month names because browsers lack zu/st/tn data. */
+export function formatLocalizedDate(date: Date, language: AppLanguage, withYear = true): string {
+  const text = `${date.getDate()} ${MONTHS[language][date.getMonth()]}`;
+  return withYear ? `${text} ${date.getFullYear()}` : text;
+}
+
 function joinNames(names: string[]): string {
   if (names.length < 2) return names[0] ?? '';
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;

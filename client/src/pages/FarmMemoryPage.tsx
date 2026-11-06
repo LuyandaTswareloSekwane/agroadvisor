@@ -7,7 +7,8 @@ import { PageLoader } from '../components/ui/PageLoader';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
-import { LANGUAGE_LOCALES } from '../i18n';
+import { LANGUAGE_LOCALES, type AppLanguage } from '../i18n';
+import { formatLocalizedDate } from '../utils/weatherAdvice';
 import {
   addFarmMemoryEntry,
   deleteFarmMemoryEntry,
@@ -82,8 +83,8 @@ function MemoryIcon({ type, className = 'h-5 w-5' }: { type: FarmMemoryType; cla
   );
 }
 
-function formatEntryDate(entry: FarmMemoryEntry, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(entry.occurredAt.toDate());
+function formatEntryDate(entry: FarmMemoryEntry, language: AppLanguage): string {
+  return formatLocalizedDate(entry.occurredAt.toDate(), language);
 }
 
 export function FarmMemoryPage() {
@@ -113,8 +114,7 @@ export function FarmMemoryPage() {
 
   const locale = LANGUAGE_LOCALES[language];
   const week = weekRange(new Date());
-  const weekDateFormatter = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' });
-  const weekLabel = `${weekDateFormatter.format(week.start)} – ${weekDateFormatter.format(week.end)}`;
+  const weekLabel = `${formatLocalizedDate(week.start, language, false)} – ${formatLocalizedDate(week.end, language, false)}`;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -361,7 +361,7 @@ export function FarmMemoryPage() {
                           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                             <span className="text-[11px] font-bold uppercase tracking-wide text-leaf-700">{t(MEMORY_TYPE_KEYS[entry.type])}</span>
                             <time className="text-xs text-soil-500" dateTime={entry.occurredAt.toDate().toISOString()}>
-                              {formatEntryDate(entry, locale)}
+                              {formatEntryDate(entry, language)}
                             </time>
                           </div>
                           <h3 className="mt-1 break-words text-base font-bold text-soil-900">{entry.title}</h3>

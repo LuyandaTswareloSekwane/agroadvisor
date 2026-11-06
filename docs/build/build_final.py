@@ -616,8 +616,8 @@ for r in [
 # ------------------------------------------------------------------ appendices
 heading("APPENDICES", 1)
 heading("Appendix A: Source code repository", 2)
-para("GitHub repository URL: [[Paste the repository URL]]")
-para("Release tag or commit: [[Paste the tag or commit hash that was assessed]]")
+para("GitHub repository URL: https://github.com/LuyandaTswareloSekwane/agroadvisor")
+para("Release tag or commit: tag v1.0 (commit 19c334b12a1cd123c15a7a237abd90ab2e7dc118)")
 heading("Appendix B: Deployed system", 2)
 para("No public deployment. The assessed system runs locally as described under System Setup and Operation.")
 heading("Appendix C: Supporting material", 2)
@@ -628,4 +628,5 @@ bullet("Knowledge base: config/knowledge-base/weather-risks.ts, crops.ts and liv
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 d.doc.save(OUT)
 print(OUT)
+
 
